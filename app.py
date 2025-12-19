@@ -14,7 +14,7 @@ apply_custom_styles()
 
 st.title("🎯 Precision PDF Extractor")
 st.markdown("### Extract **Exact Titles** and **Emails** strictly.")
-st.markdown("Upload your research papers or documents below. Processing is now **3x faster** with parallel engines.")
+st.markdown("Upload your research papers or documents below. Processing is now **Turbocharged** with high-speed C-engines.")
 
 # Settings
 col1, col2 = st.columns([1, 1])
@@ -28,9 +28,9 @@ with col2:
     max_workers = st.slider(
         "Parallel Processing Threads", 
         min_value=1, 
-        max_value=10, 
-        value=4,
-        help="Higher values process files faster but use more memory."
+        max_value=32, 
+        value=8,
+        help="Higher values process files faster. Recommended: 2x your CPU cores."
     )
 
 uploaded_files = st.file_uploader("Drag and drop PDFs here", type="pdf", accept_multiple_files=True)

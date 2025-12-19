@@ -7,30 +7,29 @@ EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 
 def extract_text_content(path):
     """
-    Robust text extraction using pdfplumber first, falling back to PyMuPDF (fitz).
+    Extremely fast text extraction using PyMuPDF (fitz) as primary engine.
+    Falls back to pdfplumber ONLY if fitz fails to find enough text.
     """
     text = ""
-    # 1. Try pdfplumber (better for layout preservation)
+    # 1. Try PyMuPDF (fitz) - High performance C engine
     try:
-        with pdfplumber.open(path) as pdf:
-            # Only scan first 10 pages for broader extraction if needed, but keeping 6 as per original
-            for p in pdf.pages[:6]:
-                t = p.extract_text()
-                if t:
-                    text += t + "\n"
+        doc = fitz.open(path)
+        for p in doc[:6]: # Scan first 6 pages
+            text += p.get_text("text") + "\n"
+        doc.close()
     except Exception:
         pass
 
-    # 2. Fallback to fitz if text is too short (scanned or complex PDF)
-    if len(text.strip()) < 100:
+    # 2. Hard Fallback to pdfplumber ONLY if fitz yields almost nothing
+    if len(text.strip()) < 50:
         try:
-            doc = fitz.open(path)
-            text = ""  # Reset
-            for p in doc[:6]:
-                text += p.get_text("text") + "\n"
-            doc.close()
+            with pdfplumber.open(path) as pdf:
+                for p in pdf.pages[:6]:
+                    t = p.extract_text()
+                    if t:
+                        text += t + "\n"
         except Exception:
-            return ""
+            pass
 
     return text.strip()
 
