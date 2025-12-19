@@ -33,6 +33,7 @@ pip install -r requirements.txt
 Ensure port 8502 is open to the public:
 ```bash
 sudo ufw allow 8502/tcp
+sudo ufw allow 80/tcp
 sudo ufw reload
 ```
 
@@ -60,7 +61,26 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-Enable and start:
+## 5. Nginx Config for 50GB Uploads (Optional)
+If you use Nginx to access the app via a domain, you MUST increase the upload limit:
+```bash
+sudo nano /etc/nginx/sites-available/pdf2email
+```
+Add `client_max_body_size 50G;` inside the server block:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    client_max_body_size 50G;
+
+    location / {
+        proxy_pass http://localhost:8502;
+        ...
+    }
+}
+```
+
+## 6. Enable and start:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable pdf2email
