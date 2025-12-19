@@ -14,7 +14,7 @@ apply_custom_styles()
 
 st.title("🎯 Precision PDF Extractor")
 st.markdown("### Extract **Exact Titles** and **Emails** strictly.")
-st.markdown("Upload your research papers or documents below. Processing is now **Turbocharged** with high-speed C-engines.")
+st.markdown("Upload PDFs or a **ZIP file** containing PDFs. Processing is now **Turbocharged** for 500+ documents.")
 
 # Settings
 col1, col2 = st.columns([1, 1])
@@ -28,12 +28,12 @@ with col2:
     max_workers = st.slider(
         "Parallel Processing Threads", 
         min_value=1, 
-        max_value=32, 
-        value=8,
-        help="Higher values process files faster. Recommended: 2x your CPU cores."
+        max_value=64, 
+        value=16,
+        help="Higher values process files faster. Recommended: 32+ for 500+ PDFs."
     )
 
-uploaded_files = st.file_uploader("Drag and drop PDFs here", type="pdf", accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload PDFs or ZIP", type=["pdf", "zip"], accept_multiple_files=True)
 
 if uploaded_files:
     st.divider()
@@ -42,36 +42,56 @@ if uploaded_files:
     results = []
     
     # Logic for parallel processing
-    if st.button("🚀 Start Extraction"):
+    if st.button("🚀 Start High-Speed Extraction"):
+        import time
+        import zipfile
+        from io import BytesIO
+        
+        start_time = time.time()
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Prepare file data for processing
-        # We read bytes here to avoid issues with Streamlit's file pointer in threads
-        file_data = [(f.getvalue(), f.name) for f in uploaded_files]
+        # 1. Prepare file data (expand ZIPs if present)
+        file_data = [] # List of (bytes, name)
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Map the processing function to our file data
-            future_to_file = {
-                executor.submit(process_single_pdf, data, name, exclude_no_email): name 
-                for data, name in file_data
-            }
+        for f in uploaded_files:
+            if f.name.endswith(".zip"):
+                with zipfile.ZipFile(BytesIO(f.getvalue())) as z:
+                    for name in z.namelist():
+                        if name.lower().endswith(".pdf"):
+                            file_data.append((z.read(name), name))
+            else:
+                file_data.append((f.getvalue(), f.name))
+        
+        total_extracted = len(file_data)
+        if total_extracted == 0:
+            st.error("No PDFs found in the selection or ZIP files.")
+        else:
+            status_text.text(f"Preparing {total_extracted} files for processing...")
             
-            completed = 0
-            for future in concurrent.futures.as_completed(future_to_file):
-                file_name = future_to_file[future]
-                try:
-                    res = future.result()
-                    results.extend(res)
-                except Exception as exc:
-                    st.error(f"{file_name} generated an exception: {exc}")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_file = {
+                    executor.submit(process_single_pdf, data, name, exclude_no_email): name 
+                    for data, name in file_data
+                }
                 
-                completed += 1
-                progress_bar.progress(completed / total_files)
-                status_text.text(f"Processed {completed}/{total_files} files...")
+                completed = 0
+                for future in concurrent.futures.as_completed(future_to_file):
+                    try:
+                        res = future.result()
+                        results.extend(res)
+                    except Exception as exc:
+                        st.error(f"Batch error: {exc}")
+                    
+                    completed += 1
+                    if completed % 5 == 0 or completed == total_extracted:
+                        progress_bar.progress(completed / total_extracted)
+                        status_text.text(f"Extracted {completed}/{total_extracted} documents...")
 
-        status_text.empty()
-        progress_bar.empty()
+            duration = time.time() - start_time
+            status_text.empty()
+            progress_bar.empty()
+            st.success(f"✅ Processed {total_extracted} files in {duration:.2f} seconds ({total_extracted/duration:.1f} files/sec)")
 
         # --- Display Results ---
         if results:
