@@ -46,52 +46,87 @@ if uploaded_files:
         import time
         import zipfile
         from io import BytesIO
+        import gc
         
         start_time = time.time()
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # 1. Prepare file data (expand ZIPs if present)
-        file_data = [] # List of (bytes, name)
+        # --- Memory-Safe File Data Generator ---
+        def get_file_data(uploaded_files):
+            for f in uploaded_files:
+                if f.name.endswith(".zip"):
+                    try:
+                        with zipfile.ZipFile(BytesIO(f.getvalue())) as z:
+                            for name in z.namelist():
+                                if name.lower().endswith(".pdf"):
+                                    # Yield one file at a time to save memory
+                                    yield z.read(name), name
+                    except Exception as ze:
+                        st.error(f"Error reading ZIP {f.name}: {ze}")
+                else:
+                    yield f.getvalue(), f.name
+
+        # For progress tracking, we still need a total count
+        # This is a trade-off: counting first vs estimating
+        # We'll estimate based on uploaded_files or count if not too large
+        status_text.text("Scanning upload for PDFs...")
         
-        for f in uploaded_files:
-            if f.name.endswith(".zip"):
-                with zipfile.ZipFile(BytesIO(f.getvalue())) as z:
-                    for name in z.namelist():
-                        if name.lower().endswith(".pdf"):
-                            file_data.append((z.read(name), name))
-            else:
-                file_data.append((f.getvalue(), f.name))
+        # Convert generator to a list in small chunks or just process directly
+        # To avoid RAM spike, we'll process in chunks of 50
+        CHUNK_SIZE = 50
+        all_file_data_gen = get_file_data(uploaded_files)
         
-        total_extracted = len(file_data)
-        if total_extracted == 0:
-            st.error("No PDFs found in the selection or ZIP files.")
-        else:
-            status_text.text(f"Preparing {total_extracted} files for processing...")
+        completed = 0
+        total_found = 0
+        
+        # We'll use a loop to pull chunks from the generator and process them
+        while True:
+            chunk = []
+            try:
+                for _ in range(CHUNK_SIZE):
+                    chunk.append(next(all_file_data_gen))
+            except StopIteration:
+                pass
+            
+            if not chunk:
+                break
+                
+            total_found += len(chunk)
+            status_text.text(f"Processing batch of {len(chunk)} (Total: {total_found})...")
             
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_file = {
                     executor.submit(process_single_pdf, data, name, exclude_no_email): name 
-                    for data, name in file_data
+                    for data, name in chunk
                 }
                 
-                completed = 0
                 for future in concurrent.futures.as_completed(future_to_file):
+                    file_name = future_to_file[future]
                     try:
                         res = future.result()
                         results.extend(res)
                     except Exception as exc:
-                        st.error(f"Batch error: {exc}")
+                        st.error(f"Error in {file_name}: {exc}")
+                        print(f"ERROR: {file_name} -> {exc}") # Server-side log
                     
                     completed += 1
-                    if completed % 5 == 0 or completed == total_extracted:
-                        progress_bar.progress(completed / total_extracted)
-                        status_text.text(f"Extracted {completed}/{total_extracted} documents...")
+                    # Update progress bar occasionally
+                    if completed % 10 == 0:
+                        progress_bar.progress(min(completed / (len(uploaded_files) * 5), 0.99)) # Estimated progress
+            
+            # Explicit Garbage Collection after each chunk
+            del chunk
+            gc.collect()
 
-            duration = time.time() - start_time
-            status_text.empty()
-            progress_bar.empty()
-            st.success(f"✅ Processed {total_extracted} files in {duration:.2f} seconds ({total_extracted/duration:.1f} files/sec)")
+        duration = time.time() - start_time
+        status_text.empty()
+        progress_bar.empty()
+        
+        if total_found > 0:
+            st.success(f"✅ Processed {total_found} files in {duration:.2f} seconds ({total_found/duration:.1f} files/sec)")
+        else:
+            st.warning("No PDFs found to process.")
 
         # --- Display Results ---
         if results:
