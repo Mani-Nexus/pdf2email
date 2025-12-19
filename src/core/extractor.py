@@ -35,29 +35,33 @@ def extract_text_content(path):
 
 def extract_from_doc(doc, exclude_no_email=True):
     """
-    Optimized extraction from an already open fitz Document.
-    Returns a list of dicts with Title and Emails.
+    Hyper-optimized extraction. Stops as soon as data is found.
     """
-    # 1. Faster Text Extraction (limited to first 6 pages)
-    text = ""
-    for p in doc[:6]:
-        text += p.get_text("text") + "\n"
+    # 1. Quick Metadata Title Attempt
+    title = _get_title_from_doc(doc, metadata_only=True)
     
-    if len(text.strip()) < 50:
-        return [] # Skip unreadable or nearly empty documents early
-
-    # 2. Extract Title (Strategy: Metadata -> Visual)
-    title = _get_title_from_doc(doc)
-    
-    # 3. Extract Emails
-    emails = EMAIL_RE.findall(text)
-    seen = set()
     unique_emails = []
-    for e in emails:
-        e_lower = e.lower()
-        if e_lower not in seen:
-            seen.add(e_lower)
-            unique_emails.append(e_lower)
+    text = ""
+    
+    # 2. Sequential Page Scanning with Early Exit
+    for p in doc[:6]:
+        p_text = p.get_text("text")
+        text += p_text + "\n"
+        
+        # Immediate Email Search
+        found_emails = EMAIL_RE.findall(p_text)
+        for e in found_emails:
+            e_lower = e.lower()
+            if e_lower not in unique_emails:
+                unique_emails.append(e_lower)
+        
+        # AGGRESSIVE EARLY EXIT: If we have a title (from metdaata) and 2+ emails, stop now
+        if title != "Unknown Title" and len(unique_emails) >= 2:
+            break
+
+    # 3. Final Visual Title Fallback if metadata failed
+    if title == "Unknown Title":
+        title = _get_title_from_doc(doc, metadata_only=False)
 
     if not unique_emails and exclude_no_email:
         return []
@@ -67,18 +71,20 @@ def extract_from_doc(doc, exclude_no_email=True):
 
     return [{"Exact Title": title, "Email": email} for email in unique_emails]
 
-def _get_title_from_doc(doc):
+def _get_title_from_doc(doc, metadata_only=False):
     """Internal helper to extract title from a fitz Document."""
     try:
-        # Metadata check
+        # Strategy A: Metadata (Instant)
         meta_title = doc.metadata.get("title", "").strip()
         if meta_title and 5 < len(meta_title) < 200:
             if not re.match(r"^[\d\s\.\-_]+$", meta_title):
                 junk_patterns = [r"^microsoft word", r"^untitled", r"^latex", r"^presentation", r"\.pdf$", r"\.docx?$", r"^slide"]
                 if not any(re.search(pat, meta_title, re.IGNORECASE) for pat in junk_patterns):
                     return meta_title
+        
+        if metadata_only: return "Unknown Title"
 
-        # Visual check (Page 1 blocks)
+        # Strategy B: Visual check (Page 1)
         page = doc[0]
         blocks = page.get_text("dict")["blocks"]
         candidates = []

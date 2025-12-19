@@ -14,7 +14,7 @@ apply_custom_styles()
 
 st.title("🎯 Precision PDF Extractor")
 st.markdown("### Extract **Exact Titles** and **Emails** strictly.")
-st.markdown("Upload PDFs or a **ZIP file** containing PDFs. Processing is now **Turbocharged** for 500+ documents.")
+st.markdown("Upload PDFs or a **ZIP file**. Processing is now in **Hyper-Drive Mode** (1,000+ docs supported).")
 
 # Settings
 col1, col2 = st.columns([1, 1])
@@ -28,9 +28,9 @@ with col2:
     max_workers = st.slider(
         "Parallel Processing Threads", 
         min_value=1, 
-        max_value=64, 
-        value=16,
-        help="Higher values process files faster. Recommended: 32+ for 500+ PDFs."
+        max_value=500, 
+        value=64,
+        help="Higher values process files faster. Recommended: 100+ for large batches on high-core VPS."
     )
 
 uploaded_files = st.file_uploader("Upload PDFs or ZIP", type=["pdf", "zip"], accept_multiple_files=True)
