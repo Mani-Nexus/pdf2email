@@ -61,39 +61,20 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-## 5. Nginx Config for 50GB Uploads (Optional)
-If you use Nginx to access the app via a domain, you MUST increase the upload limit:
-```bash
-sudo nano /etc/nginx/sites-available/pdf2email
-```
-Add `client_max_body_size 50G;` inside the server block:
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-    client_max_body_size 50G;
-
-    location / {
-        proxy_pass http://localhost:8502;
-        ...
-    }
-}
-```
-
-## 6. Enable and start:
+## 5. Enable and start:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable pdf2email
 sudo systemctl restart pdf2email
 ```
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 If the app doesn't load, check the logs for errors:
 ```bash
 sudo journalctl -u pdf2email.service -n 50
 ```
 
-## 6. Updates
+## 7. Updates
 Whenever you push new changes to GitHub, run these commands on the VPS:
 ```bash
 cd /root/pdf2email
